@@ -1,0 +1,35 @@
+# -*- coding: utf-8 -*-
+
+class BaseType:
+
+    def __init__(self, data: dict):
+        """
+        初始化方法
+        :param data:
+        """
+        if not isinstance(data, dict):
+            raise TypeError("data must be dict")
+
+        for key, value in data.items():
+            if isinstance(value, dict):
+                setattr(self, key, BaseType(value))
+            elif isinstance(value, list):
+                setattr(self, key, [BaseType(item) if isinstance(item, dict) else item for item in value])
+            else:
+                setattr(self, key, value)
+
+    def __repr__(self):
+        attrs = ", ".join(f"{key}={value}" for key, value in self.__dict__.items())
+        return f"{self.__class__.__name__}{attrs}"
+
+    def __getitem__(self, index: int):
+        """支持通过索引访问列表属性"""
+        if not hasattr(self, "__iter__"):
+            raise TypeError()
+        return getattr(self, "__iter__")[index]
+
+
+class APIType(BaseType):
+
+    def __init__(self, data: dict):
+        super().__init__(data)

@@ -1,0 +1,18 @@
+# -*- coding: utf-8 -*-
+
+from .completions import Completions
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from .._client import DeepSeekAI
+
+
+from .._base import DeepSeekAPI
+
+
+class DeepSeekChat(DeepSeekAPI):
+    """DeepSeekChat"""
+    _client: None
+
+    @property
+    def completions(self) -> Completions:
+        return Completions(self._client)

@@ -1,0 +1,66 @@
+Metadata-Version: 2.1
+Name: deepseek-ai
+Version: 0.0.1
+Summary: easy use the deepseek model
+Home-page: https://github.com/SyJarvis/deepseekai
+License: MIT
+Author: SyJarvis
+Author-email: 1755115828@qq.com
+Requires-Python: >=3.8,<4.0
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Requires-Dist: pydantic (>2.0)
+Requires-Dist: requests (>=2.32.3)
+Project-URL: Repository, https://github.com/SyJarvis/deepseekai
+Description-Content-Type: text/markdown
+
+# 🚀 DeepSeekAI: easy use the deepseek model
+
+## Install
+
+* Install from source (Recommend)
+
+```bash
+cd deepseek_ai
+pip install -e .
+```
+* Install from PyPI
+```bash
+pip install deepseek-ai
+```
+
+## Quick Start
+* All the code can be found in the `examples`
+* Set DeepSeek API key in environment if using DeepSeek models: `export DEEPSEEK_API_KEY="sk-...".`
+*  Maybe you can try loading environment variables like this. Create a new `.env` file
+```
+DEEPSEEK_API_KEY="sk-..."
+```
+```python
+from dotenv import load_dotenv, find_dotenv
+load_dotenv(find_dotenv(), override=True)
+```
+##### It works with the Langchain library
+
+```python
+from deepseek_ai import DeepSeekAI
+
+client = DeepSeekAI(
+    api_key="sk-...",
+)
+
+messages = [{"role": "user", "content": "9.11 and 9.8, which is greater?"}]
+
+response = client.chat.completions.create(
+    model="deepseek_ai-chat",
+    messages=messages
+)
+
+print(response.choices[0].message.content)
+```

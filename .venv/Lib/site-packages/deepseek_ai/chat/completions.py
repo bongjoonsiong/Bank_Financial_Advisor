@@ -1,0 +1,54 @@
+# -*- coding: utf-8 -*-
+
+
+from typing import (
+    Optional,
+    Any,
+    List,
+    Dict
+)
+
+from .._base import DeepSeekAPI
+# from .._client import DeepSeekAI
+from .._type import APIType
+
+class Completions(DeepSeekAPI):
+    def __init__(self, client: None) -> None:
+        super().__init__(client)
+        self._url = "/completions"
+
+    def create(
+            self,
+            *,
+            model: str = "deepseek_ai-chat",
+            messages: List[Dict[str, str | Any]] = None,
+            temperature: Optional[float] = 1,
+            top_p: Optional[float] = 1,
+            request_id: Optional[str] = None,
+            max_tokens: Optional[int] = 2048,
+            n: Optional[int] = 1,
+            response_format: Optional[dict] = {"type": "text"},
+            frequency_penalty: Optional[int] = 0,
+            presence_penalty: Optional[int] = 0,
+            tools: Any = None,
+            tool_choice: Optional[str] = None,
+            logprobs: Optional[bool] = False,
+            top_logprobs: Optional[int] = None
+    ):
+        params = {
+            "model": model,
+            "temperature": temperature,
+            "top_p": top_p,
+            "max_tokens": max_tokens,
+            "messages": messages
+        }
+        try:
+            reply = self._post(request_path=f"chat/completions", **params)
+        except Exception as e:
+            raise e
+        self.result = APIType(reply)
+        return self
+
+    @property
+    def choices(self):
+        return self.result.choices

@@ -1,0 +1,14 @@
+# -*- coding: utf-8 -*-
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ._client import DeepSeekAI
+
+
+class DeepSeekAPI:
+    _client: None
+
+    def __init__(self, client: None) -> None:
+        self._client = client
+        self._post = client.action_post

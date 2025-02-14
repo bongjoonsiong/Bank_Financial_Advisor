@@ -1,0 +1,8 @@
+# -*- coding: utf-8 -*-
+from pydantic import BaseModel
+
+
+class BaseMessage(BaseModel):
+    message_type: str
+    content:str
+    user_id: str

@@ -1,0 +1,20 @@
+# -*- coding: utf-8 -*-
+
+from ._http_client import APIClient
+import httpx
+from typing import Any, Dict, Optional, Union
+from pydantic import Field
+import os
+from .__version__ import __version__
+from .chat import DeepSeekChat
+
+
+class DeepSeekAI(APIClient):
+    version = __version__
+
+    def __init__(self, *, api_key: str = None, base_url: str = None, timeout: Union[int, float] = 60) -> None:
+        super().__init__(base_url, api_key, timeout)
+        self.chat = DeepSeekChat(self)
+
+    def __del__(self):
+        self.close()

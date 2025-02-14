@@ -1,0 +1,13 @@
+# -*- coding: utf-8 -*-
+
+from pydantic import BaseModel
+from typing import (
+    Optional,
+    Dict,
+    List
+)
+
+
+class ChatResult(BaseModel):
+    generations: List
+    llm_output: Optional[Dict] = None

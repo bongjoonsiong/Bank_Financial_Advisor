@@ -1,0 +1,10 @@
+streamlit
+langchain
+langchain_deepseek
+langchain_chroma
+langchain_text_splitters
+chromadb
+deepseek-ai
+python-dotenv
+langchain_openai  # Optional: Only needed if using OpenAI embeddings as fallback for RAG
+langgraph        # IMPORTANT: LangGraph framework - needed for agent orchestration
