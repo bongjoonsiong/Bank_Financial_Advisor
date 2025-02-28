@@ -1,5 +1,16 @@
 import streamlit as st
 import os
+import sys
+
+# Preload pysqlite3-binary to override system SQLite before chromadb import
+try:
+    __import__("pysqlite3")
+    sys.modules["sqlite3"] = sys.modules.pop("pysqlite3")
+except ImportError:
+    st.error("pysqlite3-binary not installed. Please add it to requirements.txt.")
+    st.stop()
+
+# Now import Chroma-related modules
 try:
     from langchain_huggingface import HuggingFaceEmbeddings
     from langchain_chroma import Chroma
