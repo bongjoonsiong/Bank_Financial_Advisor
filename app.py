@@ -1,8 +1,9 @@
 import streamlit as st
 import os
 import sys
+import chromadb  # Add this import for PersistentClient
 
-# Preload pysqlite3-binary to override system SQLite before chromadb import
+# Preload pysqlite3-binary to override system SQLite
 try:
     __import__("pysqlite3")
     sys.modules["sqlite3"] = sys.modules.pop("pysqlite3")
@@ -10,7 +11,6 @@ except ImportError:
     st.error("pysqlite3-binary not installed. Please add it to requirements.txt.")
     st.stop()
 
-# Now import Chroma-related modules
 try:
     from langchain_huggingface import HuggingFaceEmbeddings
     from langchain_chroma import Chroma
@@ -60,18 +60,27 @@ persist_directory = "chroma_db"
 
 def load_vector_db():
     try:
-        vectordb = Chroma(persist_directory=persist_directory, embedding_function=embeddings)
+        # Use PersistentClient for local file-based ChromaDB, no tenant/server mode
+        client = chromadb.PersistentClient(path=persist_directory)
+        vectordb = Chroma(
+            client=client,
+            embedding_function=embeddings,
+            collection_name="bank_info"  # Explicit collection name to avoid tenant issues
+        )
         print(f"ChromaDB loaded from: {persist_directory}")
         # Populate with PDF data if empty
         if not vectordb.similarity_search("investment products", k=1):
             loader = PyPDFLoader("Comprehensive_Bank_Information.pdf")
             documents = loader.load()
             vectordb.add_documents(documents)
-            print("Populated ChromaDB with Comprehensive_Bank_information.pdf data.")
+            print("Populated ChromaDB with Comprehensive_Bank_Information.pdf data.")
         return vectordb
     except Exception as e:
         st.error(f"Error loading ChromaDB or PDF: {e}")
         return None
+
+# Rest of your app.py remains unchanged...
+# [Continue with load_deepseek_llm(), vectordb_global, llm_global, Tool Definitions, etc.]
 
 def load_deepseek_llm():
     try:
