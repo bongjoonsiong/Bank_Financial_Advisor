@@ -150,8 +150,12 @@ def perform_vector_search(query: str) -> str:
     except Exception as e:
         return f"Vector search error: {e}"
 
-# Tools
-personalization_tools = {"get_user_risk_tolerance": get_user_risk_tolerance, "get_user_financial_goals": get_user_financial_goals}
+# Tools (expanded personalization_tools to include investment advice)
+personalization_tools = {
+    "get_user_risk_tolerance": get_user_risk_tolerance,
+    "get_user_financial_goals": get_user_financial_goals,
+    "provide_investment_advice_rag": provide_investment_advice_rag
+}
 risk_assessment_tools = {"get_user_risk_tolerance": get_user_risk_tolerance}
 investment_tools = {"provide_investment_advice_rag": provide_investment_advice_rag, "get_user_financial_goals": get_user_financial_goals, "get_user_risk_tolerance": get_user_risk_tolerance}
 budgeting_tools = {"suggest_budgeting_tips": suggest_budgeting_tips}
@@ -162,13 +166,13 @@ class AgentState(TypedDict):
     messages: List[AIMessage | HumanMessage]
     agent_response: str
 
-# --- Agent Logic with JSON Parsing ---
+# --- Agent Logic with Enhanced Parsing ---
 def run_agent(messages: List, system_prompt: str, tools: Dict[str, Any], user_info: Dict) -> str:
     user_info_str = f"User Info: Risk Tolerance: {user_info.get('risk_tolerance', 'Unknown')}, Financial Goals: {user_info.get('financial_goals', 'Unknown')}, Income: {user_info.get('income', 0.0)}, Expenses: {user_info.get('expenses', 0.0)}"
     latest_query = messages[-1].content if messages else "No query provided"
     
     prompt = ChatPromptTemplate.from_messages([
-        ("system", f"{system_prompt}\n{user_info_str}\nAvailable tools: {list(tools.keys())}.\nFor investment queries, use '[provide_investment_advice_rag]' with the query '{latest_query}'. For budgeting, use '[suggest_budgeting_tips]'. Otherwise, use '[get_user_risk_tolerance]' or '[get_user_financial_goals]' as needed. Always call a tool if applicable."),
+        ("system", f"{system_prompt}\n{user_info_str}\nAvailable tools: {list(tools.keys())}.\nFor investment queries, use '[provide_investment_advice_rag]' with the query '{latest_query}'. For budgeting, use '[suggest_budgeting_tips]'. Otherwise, use '[get_user_risk_tolerance]' or '[get_user_financial_goals]' as needed. Always call a tool if applicable. Use '[tool_name]' syntax only—no JSON or plain text 'Action:' format."),
         *messages
     ])
     try:
@@ -179,16 +183,18 @@ def run_agent(messages: List, system_prompt: str, tools: Dict[str, Any], user_in
         st.error(f"Error invoking LLM: {e}")
         return f"Error invoking LLM: {e}"
 
-    # Parse both [tool_name] and JSON {"tool": "tool_name", "input": {...}} formats
+    # Parse [tool_name], JSON, and plain text "Action: tool_name"
     tool_calls = re.findall(r'\[(.*?)\]', response_text)
-    if not tool_calls:  # Check for JSON-style tool call
-        try:
-            # Look for JSON-like structure at the end of the response
-            json_match = re.search(r'\{.*"tool":\s*"([^"]+)".*\}', response_text, re.DOTALL)
-            if json_match:
-                tool_calls = [json_match.group(1)]
-        except Exception as e:
-            st.write(f"DEBUG: Failed to parse JSON tool call: {e}")
+    if not tool_calls:
+        # Check for JSON-style tool call
+        json_match = re.search(r'\{.*"tool":\s*"([^"]+)".*\}', response_text, re.DOTALL)
+        if json_match:
+            tool_calls = [json_match.group(1)]
+        else:
+            # Check for "Action: tool_name"
+            action_match = re.search(r'Action:\s*(\w+)', response_text)
+            if action_match:
+                tool_calls = [action_match.group(1)]
 
     if tool_calls:
         for tool_name in tool_calls:
@@ -225,7 +231,7 @@ def user_input_node(state: AgentState):
 def personalization_node(state: AgentState):
     response = run_agent(
         state['messages'],
-        "You are a Personalization Agent. Gather or confirm user financial info (risk tolerance, goals, income, expenses).",
+        "You are a Personalization Agent. Gather or confirm user financial info (risk tolerance, goals, income, expenses). If the query involves investments, directly use '[provide_investment_advice_rag]'.",
         personalization_tools,
         state['user_info']
     )
@@ -318,11 +324,11 @@ if user_prompt:
         try:
             updated_state = app.invoke(st.session_state.chat_state)
             st.session_state.chat_state = updated_state
-            st.success("Advising complete!")  # Clear spinner on success
+            st.success("Advising complete!")
         except Exception as e:
             st.error(f"Workflow error: {str(e)}")
             st.write(f"DEBUG: Full error traceback: {repr(e)}")
-            st.stop()  # Clear spinner on failure
+            st.stop()
     
     st.session_state.chat_history.append(("User", user_prompt))
     agent_response = st.session_state.chat_state['agent_response']
