@@ -108,9 +108,6 @@ llm_global = load_deepseek_llm()
 if llm_global is None or vectordb_global is None:
     st.warning("Some components failed to initialize, but proceeding with limited functionality.")
 
-# Rest of your app.py remains unchanged...
-# [Continue with Tool Definitions, AgentState, Node Functions, Workflow, Streamlit UI, etc.]
-
 # --- Tool Definitions ---
 
 @tool
@@ -165,7 +162,7 @@ class AgentState(TypedDict):
     messages: List[AIMessage | HumanMessage]
     agent_response: str
 
-# --- Agent Logic with Enhanced Prompting ---
+# --- Agent Logic with Enhanced Prompting and Debugging ---
 def run_agent(messages: List, system_prompt: str, tools: Dict[str, Any], user_info: Dict) -> str:
     user_info_str = f"User Info: Risk Tolerance: {user_info.get('risk_tolerance', 'Unknown')}, Financial Goals: {user_info.get('financial_goals', 'Unknown')}, Income: {user_info.get('income', 0.0)}, Expenses: {user_info.get('expenses', 0.0)}"
     latest_query = messages[-1].content if messages else "No query provided"
@@ -174,28 +171,41 @@ def run_agent(messages: List, system_prompt: str, tools: Dict[str, Any], user_in
         ("system", f"{system_prompt}\n{user_info_str}\nAvailable tools: {list(tools.keys())}.\nFor investment queries, use '[provide_investment_advice_rag]' with the query '{latest_query}'. For budgeting, use '[suggest_budgeting_tips]'. Otherwise, use '[get_user_risk_tolerance]' or '[get_user_financial_goals]' as needed. Always call a tool if applicable."),
         *messages
     ])
-    response = llm_global.invoke(prompt.format())
-    response_text = response.content
+    try:
+        response = llm_global.invoke(prompt.format())
+        response_text = response.content
+        st.write(f"DEBUG: LLM Response: {response_text}")  # Debug output
+    except Exception as e:
+        st.error(f"Error invoking LLM: {e}")
+        return f"Error invoking LLM: {e}"
 
     import re
     tool_calls = re.findall(r'\[(.*?)\]', response_text)
     if tool_calls:
         for tool_name in tool_calls:
             if tool_name in tools:
-                if tool_name == "provide_investment_advice_rag":
-                    result = tools[tool_name].invoke({
-                        "risk_tolerance": user_info.get("risk_tolerance", "Unknown"),
-                        "financial_goals": user_info.get("financial_goals", "Unknown"),
-                        "query": latest_query
-                    })
-                elif tool_name == "suggest_budgeting_tips":
-                    result = tools[tool_name].invoke({
-                        "income": user_info.get("income", 0.0),
-                        "expenses": user_info.get("expenses", 0.0)
-                    })
-                else:
-                    result = tools[tool_name].invoke({"user_info": user_info})
-                return f"{response_text}\nTool Result: {result}"
+                try:
+                    if tool_name == "provide_investment_advice_rag":
+                        result = tools[tool_name].invoke({
+                            "risk_tolerance": user_info.get("risk_tolerance", "Unknown"),
+                            "financial_goals": user_info.get("financial_goals", "Unknown"),
+                            "query": latest_query
+                        })
+                    elif tool_name == "suggest_budgeting_tips":
+                        result = tools[tool_name].invoke({
+                            "income": user_info.get("income", 0.0),
+                            "expenses": user_info.get("expenses", 0.0)
+                        })
+                    else:
+                        result = tools[tool_name].invoke({"user_info": user_info})
+                    st.write(f"DEBUG: Tool {tool_name} Result: {result}")  # Debug output
+                    return f"{response_text}\nTool Result: {result}"
+                except Exception as e:
+                    st.error(f"Error invoking tool {tool_name}: {e}")
+                    return f"Error invoking tool {tool_name}: {e}"
+            else:
+                st.error(f"Invalid tool name in LLM response: {tool_name}")
+                return f"Invalid tool name: {tool_name}"
     return response_text
 
 # --- Node Functions ---
@@ -300,9 +310,10 @@ if user_prompt:
             updated_state = app.invoke(st.session_state.chat_state)
             st.session_state.chat_state = updated_state
         except Exception as e:
-            st.error(f"Workflow error: {e}")
-            st.stop()
-
+            st.error(f"Workflow error: {str(e)}")
+            st.write(f"DEBUG: Full error traceback: {repr(e)}")  # Detailed debug output
+            st.stop()  # Stop to clear spinner
+        
     st.session_state.chat_history.append(("User", user_prompt))
     agent_response = st.session_state.chat_state['agent_response']
     st.session_state.chat_history.append(("Agent", agent_response))
