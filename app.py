@@ -1,15 +1,16 @@
-import streamlit as st
-import os
+# Preload pysqlite3-binary to override system SQLite before any Chroma imports
 import sys
-import chromadb  # Add this import for PersistentClient
-
-# Preload pysqlite3-binary to override system SQLite
 try:
     __import__("pysqlite3")
     sys.modules["sqlite3"] = sys.modules.pop("pysqlite3")
 except ImportError:
+    import streamlit as st
     st.error("pysqlite3-binary not installed. Please add it to requirements.txt.")
     st.stop()
+
+import streamlit as st
+import os
+import chromadb  # Safe to import now with pysqlite3 preloaded
 
 try:
     from langchain_huggingface import HuggingFaceEmbeddings
@@ -60,12 +61,12 @@ persist_directory = "chroma_db"
 
 def load_vector_db():
     try:
-        # Use PersistentClient for local file-based ChromaDB, no tenant/server mode
+        # Use PersistentClient for local file-based ChromaDB
         client = chromadb.PersistentClient(path=persist_directory)
         vectordb = Chroma(
             client=client,
             embedding_function=embeddings,
-            collection_name="bank_info"  # Explicit collection name to avoid tenant issues
+            collection_name="bank_info"  # Explicit collection name
         )
         print(f"ChromaDB loaded from: {persist_directory}")
         # Populate with PDF data if empty
@@ -78,9 +79,6 @@ def load_vector_db():
     except Exception as e:
         st.error(f"Error loading ChromaDB or PDF: {e}")
         return None
-
-# Rest of your app.py remains unchanged...
-# [Continue with load_deepseek_llm(), vectordb_global, llm_global, Tool Definitions, etc.]
 
 def load_deepseek_llm():
     try:
@@ -109,6 +107,9 @@ llm_global = load_deepseek_llm()
 
 if llm_global is None or vectordb_global is None:
     st.warning("Some components failed to initialize, but proceeding with limited functionality.")
+
+# Rest of your app.py remains unchanged...
+# [Continue with Tool Definitions, AgentState, Node Functions, Workflow, Streamlit UI, etc.]
 
 # --- Tool Definitions ---
 
