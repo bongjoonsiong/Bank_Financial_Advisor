@@ -6,5 +6,11 @@ langchain_text_splitters
 chromadb
 deepseek-ai
 python-dotenv
-langchain_openai  # Optional: Only needed if using OpenAI embeddings as fallback for RAG
-langgraph        # IMPORTANT: LangGraph framework - needed for agent orchestration
+# langchain_openai  # Removed - not using OpenAI embeddings anymore
+streamlit_agraph
+langgraph
+langchain-community
+pypdf
+sentence-transformers  # *** IMPORTANT: ADDED sentence-transformers - for HuggingFace embeddings ***
+
+langchain-huggingface  # Updated dependency
