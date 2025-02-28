@@ -10,7 +10,9 @@ except ImportError:
 
 import streamlit as st
 import os
-import chromadb  # Safe to import now with pysqlite3 preloaded
+import chromadb
+import json
+import re
 
 try:
     from langchain_huggingface import HuggingFaceEmbeddings
@@ -61,15 +63,13 @@ persist_directory = "chroma_db"
 
 def load_vector_db():
     try:
-        # Use PersistentClient for local file-based ChromaDB
         client = chromadb.PersistentClient(path=persist_directory)
         vectordb = Chroma(
             client=client,
             embedding_function=embeddings,
-            collection_name="bank_info"  # Explicit collection name
+            collection_name="bank_info"
         )
         print(f"ChromaDB loaded from: {persist_directory}")
-        # Populate with PDF data if empty
         if not vectordb.similarity_search("investment products", k=1):
             loader = PyPDFLoader("Comprehensive_Bank_Information.pdf")
             documents = loader.load()
@@ -162,7 +162,7 @@ class AgentState(TypedDict):
     messages: List[AIMessage | HumanMessage]
     agent_response: str
 
-# --- Agent Logic with Enhanced Prompting and Debugging ---
+# --- Agent Logic with JSON Parsing ---
 def run_agent(messages: List, system_prompt: str, tools: Dict[str, Any], user_info: Dict) -> str:
     user_info_str = f"User Info: Risk Tolerance: {user_info.get('risk_tolerance', 'Unknown')}, Financial Goals: {user_info.get('financial_goals', 'Unknown')}, Income: {user_info.get('income', 0.0)}, Expenses: {user_info.get('expenses', 0.0)}"
     latest_query = messages[-1].content if messages else "No query provided"
@@ -174,13 +174,22 @@ def run_agent(messages: List, system_prompt: str, tools: Dict[str, Any], user_in
     try:
         response = llm_global.invoke(prompt.format())
         response_text = response.content
-        st.write(f"DEBUG: LLM Response: {response_text}")  # Debug output
+        st.write(f"DEBUG: LLM Response: {response_text}")
     except Exception as e:
         st.error(f"Error invoking LLM: {e}")
         return f"Error invoking LLM: {e}"
 
-    import re
+    # Parse both [tool_name] and JSON {"tool": "tool_name", "input": {...}} formats
     tool_calls = re.findall(r'\[(.*?)\]', response_text)
+    if not tool_calls:  # Check for JSON-style tool call
+        try:
+            # Look for JSON-like structure at the end of the response
+            json_match = re.search(r'\{.*"tool":\s*"([^"]+)".*\}', response_text, re.DOTALL)
+            if json_match:
+                tool_calls = [json_match.group(1)]
+        except Exception as e:
+            st.write(f"DEBUG: Failed to parse JSON tool call: {e}")
+
     if tool_calls:
         for tool_name in tool_calls:
             if tool_name in tools:
@@ -198,7 +207,7 @@ def run_agent(messages: List, system_prompt: str, tools: Dict[str, Any], user_in
                         })
                     else:
                         result = tools[tool_name].invoke({"user_info": user_info})
-                    st.write(f"DEBUG: Tool {tool_name} Result: {result}")  # Debug output
+                    st.write(f"DEBUG: Tool {tool_name} Result: {result}")
                     return f"{response_text}\nTool Result: {result}"
                 except Exception as e:
                     st.error(f"Error invoking tool {tool_name}: {e}")
@@ -309,11 +318,12 @@ if user_prompt:
         try:
             updated_state = app.invoke(st.session_state.chat_state)
             st.session_state.chat_state = updated_state
+            st.success("Advising complete!")  # Clear spinner on success
         except Exception as e:
             st.error(f"Workflow error: {str(e)}")
-            st.write(f"DEBUG: Full error traceback: {repr(e)}")  # Detailed debug output
-            st.stop()  # Stop to clear spinner
-        
+            st.write(f"DEBUG: Full error traceback: {repr(e)}")
+            st.stop()  # Clear spinner on failure
+    
     st.session_state.chat_history.append(("User", user_prompt))
     agent_response = st.session_state.chat_state['agent_response']
     st.session_state.chat_history.append(("Agent", agent_response))
