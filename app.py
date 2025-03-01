@@ -150,7 +150,7 @@ def perform_vector_search(query: str) -> str:
     except Exception as e:
         return f"Vector search error: {e}"
 
-# Tools (expanded personalization_tools to include investment advice)
+# Tools
 personalization_tools = {
     "get_user_risk_tolerance": get_user_risk_tolerance,
     "get_user_financial_goals": get_user_financial_goals,
@@ -172,13 +172,13 @@ def run_agent(messages: List, system_prompt: str, tools: Dict[str, Any], user_in
     latest_query = messages[-1].content if messages else "No query provided"
     
     prompt = ChatPromptTemplate.from_messages([
-        ("system", f"{system_prompt}\n{user_info_str}\nAvailable tools: {list(tools.keys())}.\nFor investment queries, use '[provide_investment_advice_rag]' with the query '{latest_query}'. For budgeting, use '[suggest_budgeting_tips]'. Otherwise, use '[get_user_risk_tolerance]' or '[get_user_financial_goals]' as needed. Always call a tool if applicable. Use '[tool_name]' syntax only—no JSON or plain text 'Action:' format."),
+        ("system", f"{system_prompt}\n{user_info_str}\nAvailable tools: {list(tools.keys())}.\nFor investment queries, use '[provide_investment_advice_rag]' with the query '{latest_query}'. For budgeting, use '[suggest_budgeting_tips]'. Otherwise, use '[get_user_risk_tolerance]' or '[get_user_financial_goals]' as needed. Use '[tool_name]' syntax only—no JSON or plain text 'Action:' format."),
         *messages
     ])
     try:
         response = llm_global.invoke(prompt.format())
-        response_text = response.content
-        print(f"DEBUG: LLM Response: {response_text}")  # Log to console, not GUI
+        response_text = response.content.strip()  # Strip whitespace to avoid parsing issues
+        print(f"DEBUG: LLM Response: {response_text}")
     except Exception as e:
         st.error(f"Error invoking LLM: {e}")
         return f"Error invoking LLM: {e}"
@@ -211,8 +211,8 @@ def run_agent(messages: List, system_prompt: str, tools: Dict[str, Any], user_in
                         })
                     else:
                         result = tools[tool_name].invoke({"user_info": user_info})
-                    print(f"DEBUG: Tool {tool_name} Result: {result}")  # Log to console
-                    return f"{response_text}\nTool Result: {result}"
+                    print(f"DEBUG: Tool {tool_name} Result: {result}")
+                    return result  # Return only the tool result for clarity
                 except Exception as e:
                     st.error(f"Error invoking tool {tool_name}: {e}")
                     return f"Error invoking tool {tool_name}: {e}"
@@ -252,7 +252,7 @@ def investment_node(state: AgentState):
             "financial_goals": state['user_info'].get("financial_goals", "Unknown"),
             "query": latest_query
         })
-        response = f"Investment advice based on your query: {result}"
+        response = result  # Use tool result directly
     else:
         response = run_agent(
             state['messages'],
@@ -272,15 +272,36 @@ def budgeting_node(state: AgentState):
     return {"messages": state['messages'] + [AIMessage(content=response)]}
 
 def agent_response_node(state: AgentState):
-    # Concatenate all tool results for a complete response
-    full_response = ""
+    # Aggregate all tool results into a single response
+    full_response = []
+    seen_tools = set()  # Avoid duplicates
     for msg in state['messages']:
         if isinstance(msg, AIMessage):
             if "Tool Result:" in msg.content:
-                full_response += msg.content + "\n\n"
-            elif "investment" in msg.content.lower() or "products" in msg.content.lower():
-                full_response += msg.content + "\n\n"
-    return {"agent_response": full_response.strip() if full_response else state['messages'][-1].content if state['messages'] else ""}
+                tool_result = msg.content.split("Tool Result:")[-1].strip()
+                full_response.append(tool_result)
+            elif any(tool in msg.content for tool in ["provide_investment_advice_rag", "suggest_budgeting_tips"]):
+                # Extract tool calls from text if not already processed
+                tool_calls = re.findall(r'\[(.*?)\]', msg.content)
+                for tool_name in tool_calls:
+                    if tool_name not in seen_tools and tool_name in investment_tools:
+                        seen_tools.add(tool_name)
+                        if tool_name == "provide_investment_advice_rag":
+                            result = investment_tools[tool_name].invoke({
+                                "risk_tolerance": state['user_info'].get("risk_tolerance", "Unknown"),
+                                "financial_goals": state['user_info'].get("financial_goals", "Unknown"),
+                                "query": state['user_info'].get("current_message", "No query provided")
+                            })
+                            full_response.append(result)
+                        elif tool_name == "suggest_budgeting_tips":
+                            result = budgeting_tools[tool_name].invoke({
+                                "income": state['user_info'].get("income", 0.0),
+                                "expenses": state['user_info'].get("expenses", 0.0)
+                            })
+                            full_response.append(result)
+            else:
+                full_response.append(msg.content)
+    return {"agent_response": "\n\n".join(full_response).strip() if full_response else ""}
 
 # --- Workflow ---
 workflow = StateGraph(AgentState)
