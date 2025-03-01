@@ -178,7 +178,7 @@ def run_agent(messages: List, system_prompt: str, tools: Dict[str, Any], user_in
     try:
         response = llm_global.invoke(prompt.format())
         response_text = response.content
-        st.write(f"DEBUG: LLM Response: {response_text}")
+        print(f"DEBUG: LLM Response: {response_text}")  # Log to console, not GUI
     except Exception as e:
         st.error(f"Error invoking LLM: {e}")
         return f"Error invoking LLM: {e}"
@@ -186,12 +186,10 @@ def run_agent(messages: List, system_prompt: str, tools: Dict[str, Any], user_in
     # Parse [tool_name], JSON, and plain text "Action: tool_name"
     tool_calls = re.findall(r'\[(.*?)\]', response_text)
     if not tool_calls:
-        # Check for JSON-style tool call
         json_match = re.search(r'\{.*"tool":\s*"([^"]+)".*\}', response_text, re.DOTALL)
         if json_match:
             tool_calls = [json_match.group(1)]
         else:
-            # Check for "Action: tool_name"
             action_match = re.search(r'Action:\s*(\w+)', response_text)
             if action_match:
                 tool_calls = [action_match.group(1)]
@@ -213,7 +211,7 @@ def run_agent(messages: List, system_prompt: str, tools: Dict[str, Any], user_in
                         })
                     else:
                         result = tools[tool_name].invoke({"user_info": user_info})
-                    st.write(f"DEBUG: Tool {tool_name} Result: {result}")
+                    print(f"DEBUG: Tool {tool_name} Result: {result}")  # Log to console
                     return f"{response_text}\nTool Result: {result}"
                 except Exception as e:
                     st.error(f"Error invoking tool {tool_name}: {e}")
@@ -274,11 +272,15 @@ def budgeting_node(state: AgentState):
     return {"messages": state['messages'] + [AIMessage(content=response)]}
 
 def agent_response_node(state: AgentState):
-    for msg in reversed(state['messages']):
-        if isinstance(msg, AIMessage) and ("investment" in msg.content.lower() or "products" in msg.content.lower()):
-            return {"agent_response": msg.content}
-    last_message = state['messages'][-1] if state['messages'] else None
-    return {"agent_response": last_message.content if isinstance(last_message, AIMessage) else ""}
+    # Concatenate all tool results for a complete response
+    full_response = ""
+    for msg in state['messages']:
+        if isinstance(msg, AIMessage):
+            if "Tool Result:" in msg.content:
+                full_response += msg.content + "\n\n"
+            elif "investment" in msg.content.lower() or "products" in msg.content.lower():
+                full_response += msg.content + "\n\n"
+    return {"agent_response": full_response.strip() if full_response else state['messages'][-1].content if state['messages'] else ""}
 
 # --- Workflow ---
 workflow = StateGraph(AgentState)
