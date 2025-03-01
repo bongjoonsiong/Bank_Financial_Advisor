@@ -11,7 +11,6 @@ except ImportError:
 import streamlit as st
 import os
 import chromadb
-import json
 import re
 
 try:
@@ -177,23 +176,14 @@ def run_agent(messages: List, system_prompt: str, tools: Dict[str, Any], user_in
     ])
     try:
         response = llm_global.invoke(prompt.format())
-        response_text = response.content.strip()  # Strip whitespace to avoid parsing issues
+        response_text = response.content.strip()
         print(f"DEBUG: LLM Response: {response_text}")
     except Exception as e:
         st.error(f"Error invoking LLM: {e}")
         return f"Error invoking LLM: {e}"
 
-    # Parse [tool_name], JSON, and plain text "Action: tool_name"
+    # Parse [tool_name] only
     tool_calls = re.findall(r'\[(.*?)\]', response_text)
-    if not tool_calls:
-        json_match = re.search(r'\{.*"tool":\s*"([^"]+)".*\}', response_text, re.DOTALL)
-        if json_match:
-            tool_calls = [json_match.group(1)]
-        else:
-            action_match = re.search(r'Action:\s*(\w+)', response_text)
-            if action_match:
-                tool_calls = [action_match.group(1)]
-
     if tool_calls:
         for tool_name in tool_calls:
             if tool_name in tools:
@@ -212,14 +202,14 @@ def run_agent(messages: List, system_prompt: str, tools: Dict[str, Any], user_in
                     else:
                         result = tools[tool_name].invoke({"user_info": user_info})
                     print(f"DEBUG: Tool {tool_name} Result: {result}")
-                    return result  # Return only the tool result for clarity
+                    return result  # Return tool result directly
                 except Exception as e:
                     st.error(f"Error invoking tool {tool_name}: {e}")
                     return f"Error invoking tool {tool_name}: {e}"
             else:
                 st.error(f"Invalid tool name in LLM response: {tool_name}")
                 return f"Invalid tool name: {tool_name}"
-    return response_text
+    return response_text  # Return LLM text if no tools called
 
 # --- Node Functions ---
 def user_input_node(state: AgentState):
@@ -252,7 +242,7 @@ def investment_node(state: AgentState):
             "financial_goals": state['user_info'].get("financial_goals", "Unknown"),
             "query": latest_query
         })
-        response = result  # Use tool result directly
+        response = result
     else:
         response = run_agent(
             state['messages'],
@@ -272,19 +262,15 @@ def budgeting_node(state: AgentState):
     return {"messages": state['messages'] + [AIMessage(content=response)]}
 
 def agent_response_node(state: AgentState):
-    # Aggregate all tool results into a single response
+    # Aggregate unique tool results into a single response
     full_response = []
-    seen_tools = set()  # Avoid duplicates
+    seen_tools = set()
     for msg in state['messages']:
         if isinstance(msg, AIMessage):
-            if "Tool Result:" in msg.content:
-                tool_result = msg.content.split("Tool Result:")[-1].strip()
-                full_response.append(tool_result)
-            elif any(tool in msg.content for tool in ["provide_investment_advice_rag", "suggest_budgeting_tips"]):
-                # Extract tool calls from text if not already processed
-                tool_calls = re.findall(r'\[(.*?)\]', msg.content)
+            tool_calls = re.findall(r'\[(.*?)\]', msg.content)
+            if tool_calls:
                 for tool_name in tool_calls:
-                    if tool_name not in seen_tools and tool_name in investment_tools:
+                    if tool_name not in seen_tools and tool_name in investment_tools | budgeting_tools:
                         seen_tools.add(tool_name)
                         if tool_name == "provide_investment_advice_rag":
                             result = investment_tools[tool_name].invoke({
@@ -292,16 +278,18 @@ def agent_response_node(state: AgentState):
                                 "financial_goals": state['user_info'].get("financial_goals", "Unknown"),
                                 "query": state['user_info'].get("current_message", "No query provided")
                             })
-                            full_response.append(result)
+                            full_response.append(f"Investment Advice:\n{result}")
                         elif tool_name == "suggest_budgeting_tips":
                             result = budgeting_tools[tool_name].invoke({
                                 "income": state['user_info'].get("income", 0.0),
                                 "expenses": state['user_info'].get("expenses", 0.0)
                             })
-                            full_response.append(result)
+                            full_response.append(f"Budgeting Tips:\n{result}")
             else:
-                full_response.append(msg.content)
-    return {"agent_response": "\n\n".join(full_response).strip() if full_response else ""}
+                # Include non-tool text only if it adds value
+                if not any(t in msg.content for t in ["[provide_investment_advice_rag]", "[suggest_budgeting_tips]"]):
+                    full_response.append(msg.content)
+    return {"agent_response": "\n\n".join(full_response).strip() if full_response else state['messages'][-1].content if state['messages'] else ""}
 
 # --- Workflow ---
 workflow = StateGraph(AgentState)
